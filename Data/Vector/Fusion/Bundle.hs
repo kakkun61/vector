@@ -132,9 +132,9 @@ inplace f g b = b `seq` M.fromStream (f (M.elements b)) (g (M.size b))
 -- | Convert a pure stream to a monadic stream
 lift :: Monad m => Bundle v a -> M.Bundle m v a
 {-# INLINE_FUSED lift #-}
-lift (M.Bundle (Stream step s) (Stream vstep t) v sz)
+lift (M.Bundle (Stream step s) (Stream vstep t) sz)
     = M.Bundle (Stream (return . unId . step) s)
-               (Stream (return . unId . vstep) t) v sz
+               (Stream (return . unId . vstep) t) sz
 
 -- | 'Size' hint of a 'Bundle'
 size :: Bundle v a -> Size

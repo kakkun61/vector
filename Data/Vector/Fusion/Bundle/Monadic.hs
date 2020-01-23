@@ -120,13 +120,12 @@ data Chunk v a = Chunk Int (forall m. (PrimMonad m, Vector v a) => Mutable v (Pr
 -- | Monadic streams
 data Bundle m v a = Bundle { sElems  :: Stream m a
                            , sChunks :: Stream m (Chunk v a)
-                           , sVector :: Maybe (v a)
                            , sSize   :: Size
                            }
 
 fromStream :: Monad m => Stream m a -> Size -> Bundle m v a
 {-# INLINE fromStream #-}
-fromStream (Stream step t) sz = Bundle (Stream step t) (Stream step' t) Nothing sz
+fromStream (Stream step t) sz = Bundle (Stream step t) (Stream step' t) sz
   where
     step' s = do r <- step s
                  return $ fmap (\x -> Chunk 1 (\v -> M.basicUnsafeWrite v 0 x)) r
@@ -182,7 +181,6 @@ replicate :: Monad m => Int -> a -> Bundle m v a
 {-# INLINE_FUSED replicate #-}
 replicate n x = Bundle (S.replicate n x)
                        (S.singleton $ Chunk len (\v -> M.basicSet v x))
-                       Nothing
                        (Exact len)
   where
     len = delay_inline max n 0
@@ -218,7 +216,7 @@ infixr 5 ++
 -- | Concatenate two 'Bundle's
 (++) :: Monad m => Bundle m v a -> Bundle m v a -> Bundle m v a
 {-# INLINE_FUSED (++) #-}
-Bundle sa ta _ na ++ Bundle sb tb _ nb = Bundle (sa S.++ sb) (ta S.++ tb) Nothing (na + nb)
+Bundle sa ta na ++ Bundle sb tb nb = Bundle (sa S.++ sb) (ta S.++ tb) (na + nb)
 
 -- Accessing elements
 -- ------------------
@@ -303,8 +301,8 @@ mapM_ m = S.mapM_ m . sElems
 trans :: (Monad m, Monad m') => (forall z. m z -> m' z)
                              -> Bundle m v a -> Bundle m' v a
 {-# INLINE_FUSED trans #-}
-trans f Bundle{sElems = s, sChunks = cs, sVector = v, sSize = n}
-  = Bundle { sElems = S.trans f s, sChunks = S.trans f cs, sVector = v, sSize = n }
+trans f Bundle{sElems = s, sChunks = cs, sSize = n}
+  = Bundle { sElems = S.trans f s, sChunks = S.trans f cs, sSize = n }
 
 unbox :: Monad m => Bundle m v (Box a) -> Bundle m v a
 {-# INLINE_FUSED unbox #-}
@@ -1018,7 +1016,6 @@ fromVector :: (Monad m, Vector v a) => v a -> Bundle m v a
 {-# INLINE_FUSED fromVector #-}
 fromVector v = v `seq` n `seq` Bundle (Stream step 0)
                                       (Stream vstep True)
-                                      (Just v)
                                       (Exact n)
   where
     n = basicLength v
@@ -1037,7 +1034,6 @@ fromVectors :: forall m v a. (Monad m, Vector v a) => [v a] -> Bundle m v a
 {-# INLINE_FUSED fromVectors #-}
 fromVectors us = Bundle (Stream pstep (Left us))
                         (Stream vstep us)
-                        Nothing
                         (Exact n)
   where
     n = List.foldl' (\k v -> k + basicLength v) 0 us
@@ -1064,7 +1060,6 @@ concatVectors :: (Monad m, Vector v a) => Bundle m u (v a) -> Bundle m v a
 concatVectors Bundle{sElems = Stream step t}
   = Bundle (Stream pstep (Left t))
            (Stream vstep t)
-           Nothing
            Unknown
   where
     pstep (Left s) = do
